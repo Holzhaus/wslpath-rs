@@ -1,0 +1,15 @@
+[package]
+name = "wslpath-rs"
+version = "0.1.0"
+edition = "2021"
+authors = ["Jan Holthuis <jan.holthuis@ruhr-uni-bochum.de>"]
+description = "Pure Rust implementation of wslpath"
+readme = "README.md"
+repository = "https://github.com/Holzhaus/wslpath-rs"
+license = "MPL-2.0"
+keywords = ["windows", "linux", "wsl", "path", "convert"]
+categories = ["filesystem", "os::windows-apis", "os::unix-apis"]
+exclude = [".*"]
+
+[dependencies]
+typed-path = "0.7"
