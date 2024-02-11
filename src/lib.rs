@@ -13,14 +13,14 @@ use typed_path::{
 
 #[derive(Debug)]
 pub enum Error {
-    RelativePathError,
-    InvalidPrefixError,
+    RelativePath,
+    InvalidPrefix,
 }
 
 pub fn windows_to_wsl(windows_path: &str) -> Result<String, Error> {
     let path = Utf8WindowsPath::new(windows_path);
     if !path.is_absolute() {
-        return Err(Error::RelativePathError);
+        return Err(Error::RelativePath);
     }
 
     // "C:\foo" (6 chars) -> "/mnt/c/foo" (10 chars)
@@ -38,7 +38,7 @@ pub fn windows_to_wsl(windows_path: &str) -> Result<String, Error> {
                     output.push(disk.to_ascii_lowercase().to_string());
                 }
                 _ => {
-                    return Err(Error::InvalidPrefixError);
+                    return Err(Error::InvalidPrefix);
                 }
             },
             Utf8WindowsComponent::RootDir => (),
@@ -54,15 +54,15 @@ pub fn windows_to_wsl(windows_path: &str) -> Result<String, Error> {
 pub fn wsl_to_windows(wsl_path: &str) -> Result<String, Error> {
     let path = Utf8UnixPath::new(wsl_path);
     if !path.is_absolute() {
-        return Err(Error::RelativePathError);
+        return Err(Error::RelativePath);
     }
 
     let mut components = path.components();
     if components.next() != Some(Utf8UnixComponent::RootDir) {
-        return Err(Error::InvalidPrefixError);
+        return Err(Error::InvalidPrefix);
     }
     if components.next() != Some(Utf8UnixComponent::Normal("mnt")) {
-        return Err(Error::InvalidPrefixError);
+        return Err(Error::InvalidPrefix);
     }
 
     // "/mnt/c/foo" (10 chars) -> "C:\foo" (6 chars)
@@ -70,12 +70,12 @@ pub fn wsl_to_windows(wsl_path: &str) -> Result<String, Error> {
     let mut output = Utf8WindowsPathBuf::with_capacity(expected_length);
     if let Some(Utf8UnixComponent::Normal(drive)) = components.next() {
         if drive.len() != 1 {
-            return Err(Error::InvalidPrefixError);
+            return Err(Error::InvalidPrefix);
         }
 
         output.push(format!("{}:\\", drive.to_ascii_uppercase()));
     } else {
-        return Err(Error::InvalidPrefixError);
+        return Err(Error::InvalidPrefix);
     }
 
     for component in components {
