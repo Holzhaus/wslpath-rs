@@ -6,17 +6,59 @@
 //
 // SPDX-License-Identifier: MPL-2.0
 
+//! Convert paths between WSL guest and Windows host.
+//!
+//! This library aims to offer functionality similar of the `wslpath` conversion tool [added in WSL
+//! build 17046](https://learn.microsoft.com/en-us/windows/wsl/release-notes#wsl-34), but is
+//! implemented in pure Rust.
+//!
+//! Existing crates such as [`wslpath`](https://crates.io/crates/wslpath) call `wsl.exe wslpath`
+//! internally, which may lead to a lot of command invocations when multiple paths need to be
+//! converted.
+
 use typed_path::{
     Utf8UnixComponent, Utf8UnixPath, Utf8UnixPathBuf, Utf8WindowsComponent, Utf8WindowsPath,
     Utf8WindowsPathBuf, Utf8WindowsPrefix,
 };
 
-#[derive(Debug)]
+/// Represents an error that occurred during conversion.
+#[derive(Debug, PartialEq)]
 pub enum Error {
+    /// The input path is relative and thus cannot be converted.
     RelativePath,
+    /// The input path prefix is invalid.
     InvalidPrefix,
 }
 
+/// Convert a Windows path to a WSL path.
+///
+/// The input path needs to be absolute. Path are normalized during conversion. UNC paths
+/// (`\\?\C:\...`) are supported.
+///
+/// # Errors
+///
+/// If the path is not absolute, the method returns an [`Error::RelativePath`]. Paths not starting
+/// with a drive letter will lead to an [`Error::InvalidPrefix`].
+///
+/// # Examples
+///
+/// ```
+/// use wslpath_rs::{windows_to_wsl, Error};
+///
+/// // Regular absolute paths are supported
+/// assert_eq!(windows_to_wsl("C:\\Windows").unwrap(), "/mnt/c/Windows");
+/// assert_eq!(windows_to_wsl("D:\\foo\\..\\bar\\.\\baz.txt").unwrap(), "/mnt/d/bar/baz.txt");
+/// assert_eq!(windows_to_wsl("C:\\Program Files (x86)\\Foo\\bar.txt").unwrap(), "/mnt/c/Program Files (x86)/Foo/bar.txt");
+///
+/// // UNC paths are supported
+/// assert_eq!(windows_to_wsl("\\\\?\\C:\\Windows").unwrap(), "/mnt/c/Windows");
+/// assert_eq!(windows_to_wsl("\\\\?\\D:\\foo\\..\\bar\\.\\baz.txt").unwrap(), "/mnt/d/bar/baz.txt");
+/// assert_eq!(windows_to_wsl("\\\\?\\C:\\Program Files (x86)\\Foo\\bar.txt").unwrap(), "/mnt/c/Program Files (x86)/Foo/bar.txt");
+///
+/// // Relative paths are not supported
+/// assert_eq!(windows_to_wsl("Program Files (x86)\\Foo\\bar.txt").unwrap_err(), Error::RelativePath);
+/// assert_eq!(windows_to_wsl("..\\foo\\bar.txt").unwrap_err(), Error::RelativePath);
+/// ```
 pub fn windows_to_wsl(windows_path: &str) -> Result<String, Error> {
     let path = Utf8WindowsPath::new(windows_path);
     if !path.is_absolute() {
@@ -51,6 +93,33 @@ pub fn windows_to_wsl(windows_path: &str) -> Result<String, Error> {
     Ok(output.normalize().into_string())
 }
 
+/// Convert a WSL path to a Windows path.
+///
+/// The input path needs to be absolute. Path are normalized during conversion.
+///
+/// # Errors
+///
+/// If the path is not absolute, the method returns an [`Error::RelativePath`]. Paths not starting
+/// with with `/mnt/<driveletter>` will lead to an [`Error::InvalidPrefix`].
+///
+/// # Examples
+///
+/// ```
+/// use wslpath_rs::{wsl_to_windows, Error};
+///
+/// // Absolute paths are supported
+/// assert_eq!(wsl_to_windows("/mnt/c/Windows").unwrap(), "C:\\Windows");
+/// assert_eq!(wsl_to_windows("/mnt/d/foo/../bar/./baz.txt").unwrap(), "D:\\bar\\baz.txt");
+/// assert_eq!(wsl_to_windows("/mnt/c/Program Files (x86)/Foo/bar.txt").unwrap(), "C:\\Program Files (x86)\\Foo\\bar.txt");
+///
+/// // Absolute paths not starting with `/mnt/<driveletter>` are not supported
+/// assert_eq!(wsl_to_windows("/etc/fstab").unwrap_err(), Error::InvalidPrefix);
+/// assert_eq!(wsl_to_windows("/mnt/my_custom_mount/foo/bar.txt").unwrap_err(), Error::InvalidPrefix);
+///
+/// // Relative paths are not supported
+/// assert_eq!(wsl_to_windows("Program Files (x86)/Foo/bar.txt").unwrap_err(), Error::RelativePath);
+/// assert_eq!(wsl_to_windows("../foo/bar.txt").unwrap_err(), Error::RelativePath);
+/// ```
 pub fn wsl_to_windows(wsl_path: &str) -> Result<String, Error> {
     let path = Utf8UnixPath::new(wsl_path);
     if !path.is_absolute() {
@@ -88,51 +157,4 @@ pub fn wsl_to_windows(wsl_path: &str) -> Result<String, Error> {
     }
 
     Ok(output.normalize().into_string())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_windows_to_wsl() {
-        assert_eq!(windows_to_wsl("C:\\Windows").unwrap(), "/mnt/c/Windows");
-        assert_eq!(
-            windows_to_wsl("C:\\foo\\..\\bar\\.\\baz.txt").unwrap(),
-            "/mnt/c/bar/baz.txt"
-        );
-        assert_eq!(
-            windows_to_wsl("C:\\Program Files (x86)\\Foo\\bar.txt").unwrap(),
-            "/mnt/c/Program Files (x86)/Foo/bar.txt"
-        );
-    }
-
-    #[test]
-    fn test_windows_to_wsl_unc() {
-        assert_eq!(
-            windows_to_wsl("\\\\?\\C:\\Windows").unwrap(),
-            "/mnt/c/Windows"
-        );
-        assert_eq!(
-            windows_to_wsl("\\\\?\\C:\\foo\\..\\bar\\.\\baz.txt").unwrap(),
-            "/mnt/c/bar/baz.txt"
-        );
-        assert_eq!(
-            windows_to_wsl("\\\\?\\C:\\Program Files (x86)\\Foo\\bar.txt").unwrap(),
-            "/mnt/c/Program Files (x86)/Foo/bar.txt"
-        );
-    }
-
-    #[test]
-    fn test_wsl_to_windows() {
-        assert_eq!(wsl_to_windows("/mnt/c/Windows").unwrap(), "C:\\Windows");
-        assert_eq!(
-            wsl_to_windows("/mnt/c/foo/../bar/./baz.txt").unwrap(),
-            "C:\\bar\\baz.txt"
-        );
-        assert_eq!(
-            wsl_to_windows("/mnt/c/Program Files (x86)/Foo/bar.txt").unwrap(),
-            "C:\\Program Files (x86)\\Foo\\bar.txt"
-        );
-    }
 }
