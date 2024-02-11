@@ -6,7 +6,10 @@
 //
 // SPDX-License-Identifier: MPL-2.0
 
-use typed_path::{Utf8UnixPathBuf, Utf8WindowsComponent, Utf8WindowsPath, Utf8WindowsPrefix};
+use typed_path::{
+    Utf8UnixComponent, Utf8UnixPath, Utf8UnixPathBuf, Utf8WindowsComponent, Utf8WindowsPath,
+    Utf8WindowsPathBuf, Utf8WindowsPrefix,
+};
 
 #[derive(Debug)]
 pub enum Error {
@@ -48,6 +51,45 @@ pub fn windows_to_wsl(windows_path: &str) -> Result<String, Error> {
     Ok(output.normalize().into_string())
 }
 
+pub fn wsl_to_windows(wsl_path: &str) -> Result<String, Error> {
+    let path = Utf8UnixPath::new(wsl_path);
+    if !path.is_absolute() {
+        return Err(Error::RelativePathError);
+    }
+
+    let mut components = path.components();
+    if components.next() != Some(Utf8UnixComponent::RootDir) {
+        return Err(Error::InvalidPrefixError);
+    }
+    if components.next() != Some(Utf8UnixComponent::Normal("mnt")) {
+        return Err(Error::InvalidPrefixError);
+    }
+
+    // "/mnt/c/foo" (10 chars) -> "C:\foo" (6 chars)
+    let expected_length = wsl_path.len();
+    let mut output = Utf8WindowsPathBuf::with_capacity(expected_length);
+    if let Some(Utf8UnixComponent::Normal(drive)) = components.next() {
+        if drive.len() != 1 {
+            return Err(Error::InvalidPrefixError);
+        }
+
+        output.push(format!("{}:\\", drive.to_ascii_uppercase()));
+    } else {
+        return Err(Error::InvalidPrefixError);
+    }
+
+    for component in components {
+        match component {
+            Utf8UnixComponent::RootDir => (),
+            Utf8UnixComponent::CurDir => output.push("."),
+            Utf8UnixComponent::Normal(name) => output.push(name),
+            Utf8UnixComponent::ParentDir => output.push(".."),
+        };
+    }
+
+    Ok(output.normalize().into_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -78,6 +120,19 @@ mod tests {
         assert_eq!(
             windows_to_wsl("\\\\?\\C:\\Program Files (x86)\\Foo\\bar.txt").unwrap(),
             "/mnt/c/Program Files (x86)/Foo/bar.txt"
+        );
+    }
+
+    #[test]
+    fn test_wsl_to_windows() {
+        assert_eq!(wsl_to_windows("/mnt/c/Windows").unwrap(), "C:\\Windows");
+        assert_eq!(
+            wsl_to_windows("/mnt/c/foo/../bar/./baz.txt").unwrap(),
+            "C:\\bar\\baz.txt"
+        );
+        assert_eq!(
+            wsl_to_windows("/mnt/c/Program Files (x86)/Foo/bar.txt").unwrap(),
+            "C:\\Program Files (x86)\\Foo\\bar.txt"
         );
     }
 }
