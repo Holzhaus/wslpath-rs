@@ -45,7 +45,7 @@ pub fn windows_to_wsl(windows_path: &str) -> Result<String, Error> {
         };
     }
 
-    Ok(output.into_string())
+    Ok(output.normalize().into_string())
 }
 
 #[cfg(test)]
@@ -57,7 +57,7 @@ mod tests {
         assert_eq!(windows_to_wsl("C:\\Windows").unwrap(), "/mnt/c/Windows");
         assert_eq!(
             windows_to_wsl("C:\\foo\\..\\bar\\.\\baz.txt").unwrap(),
-            "/mnt/c/foo/../bar/./baz.txt"
+            "/mnt/c/bar/baz.txt"
         );
         assert_eq!(
             windows_to_wsl("C:\\Program Files (x86)\\Foo\\bar.txt").unwrap(),
@@ -73,7 +73,7 @@ mod tests {
         );
         assert_eq!(
             windows_to_wsl("\\\\?\\C:\\foo\\..\\bar\\.\\baz.txt").unwrap(),
-            "/mnt/c/foo/../bar/./baz.txt"
+            "/mnt/c/bar/baz.txt"
         );
         assert_eq!(
             windows_to_wsl("\\\\?\\C:\\Program Files (x86)\\Foo\\bar.txt").unwrap(),
