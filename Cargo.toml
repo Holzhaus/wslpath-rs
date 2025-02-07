@@ -12,4 +12,4 @@ categories = ["filesystem", "os::windows-apis", "os::unix-apis"]
 exclude = [".*"]
 
 [dependencies]
-typed-path = "0.7"
+typed-path = "0.10"
