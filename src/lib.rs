@@ -73,6 +73,12 @@ pub enum Error {
 /// // Relative paths are not supported
 /// assert_eq!(windows_to_wsl("Program Files (x86)\\Foo\\bar.txt").unwrap_err(), Error::RelativePath);
 /// assert_eq!(windows_to_wsl("..\\foo\\bar.txt").unwrap_err(), Error::RelativePath);
+///
+/// // Windows WSL paths are converted to the root
+/// assert_eq!(windows_to_wsl("\\\\?\\UNC\\wsl.localhost\\distro\\home\\user\\file").unwrap(), "/home/user/file");
+///
+/// // Generic network paths are not supported right now
+/// assert_eq!(windows_to_wsl("\\\\?\\UNC\\other.domain\\distro\\home\\user\\file").unwrap_err(), Error::InvalidPrefix);
 /// ```
 pub fn windows_to_wsl(windows_path: &str) -> Result<String, Error> {
     let path = Utf8WindowsPath::new(windows_path);
@@ -93,6 +99,14 @@ pub fn windows_to_wsl(windows_path: &str) -> Result<String, Error> {
                 Utf8WindowsPrefix::Disk(disk) => {
                     output.push("/mnt");
                     output.push(disk.to_ascii_lowercase().to_string());
+                }
+                Utf8WindowsPrefix::VerbatimUNC(hostname, _) => {
+                    // Assume that the path is inside the current wsl distro
+                    if hostname == "wsl.localhost" {
+                        output.push("/");
+                    } else {
+                        return Err(Error::InvalidPrefix);
+                    }
                 }
                 _ => {
                     return Err(Error::InvalidPrefix);
